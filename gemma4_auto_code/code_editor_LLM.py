@@ -1,7 +1,13 @@
-import ollama
+from openai import OpenAI
 from pathlib import Path
 from enum import Enum, auto
 import sys
+
+client = OpenAI(base_url="http://localhost:8080/v1", api_key="none")
+
+# Terminal 1:
+#   cd ~/filepath/llama.cpp
+#   ./build/bin/llama-server -hf deeonline/K2-Horizon-7B-GGUF:Q5_K_M -c 8192
 
 # Define your system instructions here
 SYSTEM_PROMPT = """
@@ -41,7 +47,8 @@ supported_file_types = [".json", ".js", ".py", ".java", ".cpp", ".css", ".c", ".
 user_key_words = ["[upload]", "[auto-code]", "[work-through]", "[defualt]"]
 formatting_key_words = ["[start-code]", "[end-code]", "[start-file]", "[end-file]"]
 
-is_thinking_on = True
+#current best model for 16 gig systems 
+MODEL_NAME = "k2-horizon"
 
 class State(Enum):
     UPLOAD = auto()
@@ -140,7 +147,7 @@ def output_content():
     
     # Loop through the chunks as they arrive from the GPU
     for chunk in response:
-        content = chunk["message"]["content"]
+        content = chunk.choices[0].delta.content or ""
         print(content, end="", flush=True)
         full_assistant_response += content
     print()  # Print a final new line when done
@@ -173,11 +180,10 @@ while True:
             messages_history.append({"role": "user", "content": content})
             
             # Pass the entire running history to Ollama
-            response = ollama.chat(
-                model="gemma4",
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
                 messages=messages_history,
                 stream=True,
-                think = is_thinking_on,
             )
 
             full_output = output_content()
@@ -199,11 +205,10 @@ while True:
                 messages_history.append({"role": "user", "content": content})
                 
                 # Pass the entire running history to Ollama
-                response = ollama.chat(
-                    model="gemma4",
-                    messages=messages_history,
-                    stream=True,
-                    think = is_thinking_on,
+                response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=messages_history,
+                stream=True,
                 )
 
                 full_output = output_content()
