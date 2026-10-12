@@ -5,13 +5,14 @@ import sys
 
 client = OpenAI(base_url="http://localhost:8080/v1", api_key="none")
 
-# Terminal 1:
-#   cd ~/filepath/llama.cpp
-#   ./build/bin/llama-server -hf deeonline/K2-Horizon-7B-GGUF:Q5_K_M -c 8192
+"""
+   cd ~/Desktop/LLMS/llama.cpp
+   ./build/bin/llama-server -hf deeonline/K2-Horizon-7B-GGUF:Q5_K_M -c 8192
+"""
 
 # Define your system instructions here
 SYSTEM_PROMPT = """
-You are a local coding assistant running inside the user's terminal. Be direct, accurate, and efficient.
+You are K2 Horizon 7B, an open-source model made by IFM, running locally as a coding assistant inside the user's terminal. Be direct, accurate, and efficient.
 
 Coding principles (always follow):
 KISS: Keep It Simple. Choose the simplest solution that works. Prefer clear, readable code over clever code.
@@ -22,25 +23,31 @@ How to respond:
 Keep answers short. Skip greetings, filler, and restating the question.
 Make the smallest change that fixes the problem. Do not rewrite or reorganize code that already works.
 Match the user's existing style, naming, and formatting.
-Briefly explain what you changed and why, in a sentence or two.
 If something is unclear or you are not sure, say so instead of guessing. Never invent functions, libraries, or file contents.
 
-Files:
-When a message includes "File contents:", treat that as the current version of the file and base your answer on it.
-When formatting instructions are given for code output, follow them exactly.
+Editing files:
+Only edit a file when the user asks for a change. If the user asks a question, just answer it.
+When you edit a file, first explain what you changed and why in a sentence or two.
+Then at the very end of your response, write out the entire updated file using the formatting instructions below.
+
+IMPORTANT FORMATTING INSTRUCTIONS MUST FOLLOW:
+Put [start-file]filepath[end-file] then [start-code]code[end-code] at the very end of your response.
+The filepath must be the full path exactly as the user typed it, starting with /.
+The code must be the entire file, not just the lines you changed.
+Only use these tags once, at the end. Never mention or write these tags anywhere else in your response.
+Do not put markdown code fences inside the tags.
+You have no tools. Never output tool calls or <ifm|...> tags.
+
+Example of the correct format:
+[start-file]/Users/you/project/example.py[end-file]
+[start-code]
+print("hello")
+[end-code]
 """
 
 UPLOAD_PROMT = """
-The user is uploading a file, unless otherwise specified this is the most current and up to date version of the file
-If the user indicates that they want the file edited for them then follow the formatting instructions
-Write out your methodology and then execute the users indicated task. Only edit what needs to be edited, and make sure your solution is the simplest possible. 
-Your solution will be taken in its entirety and pasted back into the user's indicated file, so rewrite the entire file each time with your edits. 
-Make sure the formatting is correct so that when it gets pasted it in, it compiles for each file type.
-
-IMPORTANT FORMATTING INSTRUCTIONS MUST FOLLOW IF USER WANTS TO HAVE IT EDITED FOR THEM: 
-Each code edit should output as follows explanation of code. 
-infront of the code edit put [start-file]filepath[end-file] then[start-code]code[end-code] for each of the files that you will edit.
-make sure the file path is EXACTLY as it was enterd
+The user is uploading a file, unless otherwise specified this is the most current and up to date version of the file.
+If the user wants the file edited, follow the formatting instructions from your system prompt.
 """
 
 supported_file_types = [".json", ".js", ".py", ".java", ".cpp", ".css", ".c", ".html", ".ts", ".txt", ".md"]
@@ -112,6 +119,11 @@ def find_current_state(input):
         return State.DEFAULT
 
 def write_file(output):
+    #only keep the last file block in case the AI mentions the markers earlier
+    last_start_index = output.rfind(formatting_key_words[2])
+    if(last_start_index != -1):
+        output = output[last_start_index:]
+
     while(True):
         if(output.find(formatting_key_words[2]) != -1):
             #gets the filepath from AI output for each file
@@ -147,7 +159,11 @@ def output_content():
     
     # Loop through the chunks as they arrive from the GPU
     for chunk in response:
-        content = chunk.choices[0].delta.content or ""
+        delta = chunk.choices[0].delta
+        thinking = getattr(delta, "reasoning_content", None)
+        if(thinking):
+            print(thinking, end="", flush=True)
+        content = delta.content or ""
         print(content, end="", flush=True)
         full_assistant_response += content
     print()  # Print a final new line when done
